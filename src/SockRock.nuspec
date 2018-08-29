@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package >
+  <metadata>
+    <id>SockRock</id>
+    <version>1.0.0</version>
+    <title>SockRock</title>
+    <authors>Kenneth Skovhede</authors>
+    <owners>Kenneth Skovhede</owners>
+    <licenseUrl>https://github.com/kenkendk/sockrock/blob/master/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/kenkendk/sockrock</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Native socket library in C#</description>
+    <releaseNotes>Initial release.</releaseNotes>
+    <copyright>Copyright 2017, Kenneth Skovhede</copyright>
+    <tags>Socket ScmRights epoll kqueue async</tags>
+    <dependencies>
+        <dependency id="Mono.Posix.NETStandard" version="1.0.0" />
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="bin/Release/netstandard2.0/SockRock.dll" target="lib/netstandard2.0" />
+    <file src="bin/Release/netstandard2.0/SockRock.xml" target="lib/netstandard2.0" />
+  </files>
+</package>
