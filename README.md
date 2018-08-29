@@ -1,6 +1,11 @@
 SockRock - A native socket handling library for C#
 ==================================================
 
+[Install SockRock from NuGet](https://www.nuget.org/packages/SockRock/):
+```
+PM> Install-Package SockRock
+```
+
 SockRock is a wrapper library for using `epoll` and `kqueue` from C# without having a dependency on a native library.
 
 This is required to allow passing sockets handles between processes on Linux/BSD-based systems, as Mono and .NET Core does not support using a passed handle.
