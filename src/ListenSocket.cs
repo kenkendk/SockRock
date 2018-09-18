@@ -27,7 +27,7 @@ namespace SockRock
             m_socket = Syscall.socket(UnixAddressFamily.AF_INET, UnixSocketType.SOCK_STREAM, 0);
 
             // Allow address reuse
-            Syscall.setsockopt(m_socket, UnixSocketProtocol.IPPROTO_TCP, UnixSocketOptionName.SO_REUSEADDR, 1);
+            Syscall.setsockopt(m_socket, UnixSocketProtocol.SOL_SOCKET, UnixSocketOptionName.SO_REUSEADDR, 1);
         }
 
         /// <summary>
