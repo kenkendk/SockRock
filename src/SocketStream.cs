@@ -350,11 +350,15 @@ namespace SockRock
         ///<inheritdoc />
         public override void Flush()
         {
+            FlushAsync().Wait();
         }
 
         ///<inheritdoc />
         public override Task FlushAsync(CancellationToken cancellationToken)
         {
+            // Set TCP_NODELAY to flush any pending message
+            Syscall.setsockopt(m_socket, UnixSocketProtocol.IPPROTO_TCP, (UnixSocketOptionName)0x1, 1);
+            Syscall.setsockopt(m_socket, UnixSocketProtocol.IPPROTO_TCP, (UnixSocketOptionName)0x1, 0);
             return Task.FromResult(true);
         }
 
