@@ -57,7 +57,7 @@ namespace SockRock
         /// <param name="backlog">The connection backlog</param>
         public void Bind(EndPoint endpoint, int backlog)
         {
-            SockaddrIn servaddr;
+            Sockaddr servaddr;
 
             if (endpoint is IPEndPoint ipe)
             {
@@ -72,7 +72,8 @@ namespace SockRock
             }
             else if (endpoint is UnixEndPoint upe)
             {
-                throw new Exception($"EndPoint not supported: {endpoint}");
+                var isHidden = upe.Filename[0] == 0;
+                servaddr = new SockaddrUn(upe.Filename.Substring(isHidden ? 1 : 0), isHidden);
             }
             else
                 throw new Exception($"EndPoint not supported: {endpoint}");
