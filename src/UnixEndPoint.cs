@@ -24,6 +24,10 @@ namespace SockRock
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentNullException(nameof(path));
 
+            // For hidden paths, make sure we have at UNIX_MAX_PATH zero's
+            if (path.StartsWith("\0", StringComparison.Ordinal))
+                path = path.PadRight(108, '\0');
+
             m_path = path;
         }
 
