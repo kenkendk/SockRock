@@ -12,6 +12,20 @@ namespace SockRock
         /// <param name="handle">The handle to monitor</param>
         /// <param name="closehandle">If set to <c>true</c>, the socket handle is closed when the stream is disposed</param>
         /// <returns>The stream.</returns>
-        SocketStream MonitorHandle(int handle, bool closehandle = true);
+        SocketStream MonitorWithStream(int handle, bool closehandle = true);
+
+        /// <summary>
+        /// Begins monitoring the handle and returns an event proxy
+        /// </summary>
+        /// <param name="handle">The handle to monitor</param>
+        /// <param name="closehandle">If set to <c>true</c>, the socket handle is closed when the stream is disposed</param>
+        /// <returns>The monitor instance</returns>
+        MonitoredHandle MonitoredHandle(int handle, bool closehandle = true);
+
+        /// <summary>
+        /// Stops the socket handler
+        /// </summary>
+        /// <param name="waittime">The grace period before the active connections are killed</param>
+        void Stop(TimeSpan waittime);
     }
 }

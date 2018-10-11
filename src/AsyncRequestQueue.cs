@@ -37,6 +37,7 @@ namespace SockRock
         /// <param name="offset">The offset into the buffer</param>
         /// <param name="length">The length of the data</param>
         /// <param name="cancelToken">The cancellation token</param>
+        /// <returns>The number of bytes processed</returns>
         public Task<int> Enqueue(byte[] buffer, int offset, int length, CancellationToken cancelToken)
         {
             TaskCompletionSource<int> tcs;
@@ -57,10 +58,11 @@ namespace SockRock
         /// Dequeue an item, performs poorly with multiple readers,
         /// and does not prevent starvation
         /// </summary>
+        /// <param name="throwIfDisposed">If set to <c>true</c> throws an exception if the instance is disposed, otherwise returns <c>null</c></param>
         /// <returns>The item from the queue.</returns>
-        public async Task<Tuple<byte[], int, int, TaskCompletionSource<int>, CancellationToken>> DequeueAsync()
+        public async Task<Tuple<byte[], int, int, TaskCompletionSource<int>, CancellationToken>> DequeueAsync(bool throwIfDisposed)
         {
-            return (await TryDequeueAsync(Timeout.InfiniteTimeSpan));
+            return (await TryDequeueAsync(Timeout.InfiniteTimeSpan, throwIfDisposed));
         }
 
         /// <summary>
@@ -68,8 +70,9 @@ namespace SockRock
         /// and does not prevent starvation
         /// </summary>
         /// <param name="timeout">The maximum time to wait</param>
+        /// <param name="throwIfDisposed">If set to <c>true</c> throws an exception if the instance is disposed, otherwise returns <c>null</c></param>
         /// <returns>The item from the queue and flag indicating if the dequeue succeeded.</returns>
-        public async Task<Tuple<byte[], int, int, TaskCompletionSource<int>, CancellationToken>> TryDequeueAsync(TimeSpan timeout)
+        public async Task<Tuple<byte[], int, int, TaskCompletionSource<int>, CancellationToken>> TryDequeueAsync(TimeSpan timeout, bool throwIfDisposed)
         {
             while (true)
             {
@@ -88,7 +91,11 @@ namespace SockRock
                     }
 
                     if (m_disposed)
-                        throw new ObjectDisposedException(nameof(AsyncRequestQueue));
+                    {
+                        if (throwIfDisposed)
+                            throw new ObjectDisposedException(nameof(AsyncRequestQueue));
+                        return null;
+                    }
 
                     m_waitTask = new TaskCompletionSource<bool>();
                 }
@@ -104,14 +111,14 @@ namespace SockRock
         }
 
         /// <summary>
-        /// Releases all resource used by the <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.AsyncQueue`1"/> object.
+        /// Releases all resource used by the <see cref="T:SockRock.AsyncQueue`1"/> object.
         /// </summary>
         /// <remarks>Call <see cref="Dispose"/> when you are finished using the
-        /// <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.AsyncQueue`1"/>. The <see cref="Dispose"/> method leaves the
-        /// <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.AsyncQueue`1"/> in an unusable state. After calling
+        /// <see cref="T:SockRock.AsyncQueue`1"/>. The <see cref="Dispose"/> method leaves the
+        /// <see cref="T:SockRock.AsyncQueue`1"/> in an unusable state. After calling
         /// <see cref="Dispose"/>, you must release all references to the
-        /// <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.AsyncQueue`1"/> so the garbage collector can reclaim the
-        /// memory that the <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.AsyncQueue`1"/> was occupying.</remarks>
+        /// <see cref="T:SockRock.AsyncQueue`1"/> so the garbage collector can reclaim the
+        /// memory that the <see cref="T:SockRock.AsyncQueue`1"/> was occupying.</remarks>
         public void Dispose()
         {
             m_disposed = true;

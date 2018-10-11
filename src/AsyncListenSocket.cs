@@ -19,9 +19,9 @@ namespace SockRock
         private readonly int m_socket;
 
         /// <summary>
-        /// A stream used to get async triggers from the monitor
+        /// A monitor used to get async triggers from the monitor
         /// </summary>
-        private SocketStream m_stream;
+        private MonitoredHandle m_handle;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="T:SockRock.ListenSocket"/> class.
@@ -46,7 +46,7 @@ namespace SockRock
             if (Syscall.fcntl(m_socket, FcntlCommand.F_SETFL, opts) < 0)
                 throw new IOException($"Failed to set socket O_NOBLOCK: {Stdlib.GetLastError()}");
 
-            m_stream = handler.MonitorHandle(m_socket);
+            m_handle = handler.MonitoredHandle(m_socket);
         }
 
         /// <summary>
@@ -107,8 +107,6 @@ namespace SockRock
         /// <param name="cancellationToken">Cancellation token.</param>
         public async Task<KeyValuePair<long, EndPoint>> AcceptAsync(CancellationToken cancellationToken)
         {
-            var blockedRead = false;
-
             while (!cancellationToken.IsCancellationRequested)
             {
                 // Try to read; we a non-blocking
@@ -121,18 +119,7 @@ namespace SockRock
                     var errno = Stdlib.GetLastError();
                     if (errno == Errno.EAGAIN || errno == Errno.EWOULDBLOCK)
                     {
-                        // If we tried before, just wait
-                        if (blockedRead)
-                        {
-                            await m_stream.m_readDataSignal.Task;
-                            blockedRead = false;
-                        }
-                        // We have not tried before, set us to block and try again
-                        else
-                        {
-                            m_stream.m_readDataSignal = new TaskCompletionSource<bool>();
-                            blockedRead = true;
-                        }
+                        await m_handle.WaitForReadAsync;
 
                         // Error code is normal operation code
                         continue;

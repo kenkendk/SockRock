@@ -11,7 +11,7 @@ namespace SockRock
     /// <summary>
     /// Implementation of a stream that gets data from epoll events
     /// </summary>
-    public class SocketStream : Stream
+    public class SocketStream : Stream, IMonitorItem
     {
         /// <summary>
         /// The socket we are wrapping
@@ -26,12 +26,12 @@ namespace SockRock
         /// <summary>
         /// Signal that data can be read
         /// </summary>
-        public TaskCompletionSource<bool> m_readDataSignal = new TaskCompletionSource<bool>();
+        private TaskCompletionSource<bool> m_readDataSignal = new TaskCompletionSource<bool>();
 
         /// <summary>
         /// Signal that data can be written
         /// </summary>
-        public TaskCompletionSource<bool> m_writeDataSignal = new TaskCompletionSource<bool>();
+        private TaskCompletionSource<bool> m_writeDataSignal = new TaskCompletionSource<bool>();
 
         /// <summary>
         /// The channel used to request read operations
@@ -57,9 +57,6 @@ namespace SockRock
         /// A flag that tracks the disposed state of this object
         /// </summary>
         private bool m_isDisposed;
-
-
-        // TODO: Support these
 
         ///<inheritdoc />
         public override int ReadTimeout { get; set; }
@@ -131,14 +128,17 @@ namespace SockRock
                     readReq =
                         (ReaderClosed || buffer.Key == null)
                         ? null
-                        : await m_readRequests.TryDequeueAsync(MAX_WAIT_TIME);
+                        : await m_readRequests.TryDequeueAsync(MAX_WAIT_TIME, false);
 
                     // Nope, relinquish control of our buffer
                     // and wait for a request
                     if (readReq == null)
                     {
                         buffer = manager.Release(buffer);
-                        readReq = await m_readRequests.DequeueAsync();
+                        readReq = await m_readRequests.DequeueAsync(false);
+                        // If we are disposed, just stop listening
+                        if (readReq == null)
+                            return;
                     }
 
                     if (ReaderClosed)
@@ -157,7 +157,19 @@ namespace SockRock
                             if (await Task.WhenAny(Task.Delay(MAX_WAIT_TIME), m_readDataSignal.Task) != m_readDataSignal.Task)
                             {
                                 buffer = manager.Release(buffer);
-                                await m_readDataSignal.Task;
+                                var rt = ReadTimeout;
+                                if (rt > 0)
+                                {
+                                    if (await Task.WhenAny(m_readDataSignal.Task, Task.Delay(rt)) != m_readDataSignal.Task)
+                                    {
+                                        readReq.Item4.TrySetException(new TimeoutException());
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    await m_readDataSignal.Task;
+                                }
                             }
 
                             // The poll handler says we have data, lets see
@@ -236,14 +248,18 @@ namespace SockRock
                     writeReq =
                         (buffer.Key == null)
                         ? null
-                        : await m_writeRequests.TryDequeueAsync(MAX_WAIT_TIME);
+                        : await m_writeRequests.TryDequeueAsync(MAX_WAIT_TIME, false);
 
                     // No requests, so relinquish control of our buffer
                     // and wait for a request
                     if (writeReq == null)
                     {
                         buffer = manager.Release(buffer);
-                        writeReq = await m_writeRequests.DequeueAsync();
+                        writeReq = await m_writeRequests.DequeueAsync(false);
+
+                        // If we are disposed, just stop listening
+                        if (writeReq == null)
+                            return;
                     }
 
                     if (WriterClosed)
@@ -264,7 +280,23 @@ namespace SockRock
                             if (await Task.WhenAny(Task.Delay(MAX_WAIT_TIME), m_writeDataSignal.Task) != m_writeDataSignal.Task)
                             {
                                 buffer = manager.Release(buffer);
-                                await m_writeDataSignal.Task;
+                                var rt = WriteTimeout;
+                                if (rt > 0)
+                                {
+                                    // TODO: Figure out if the timeout is for the whole operation, 
+                                    // or just for time between progress as we do here
+                                    if (await Task.WhenAny(m_writeDataSignal.Task, Task.Delay(rt)) != m_writeDataSignal.Task)
+                                    {
+                                        writeReq.Item4.TrySetException(new TimeoutException());
+                                        // Avoid setting the result to a partial result
+                                        writeReq = null;
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    await m_writeDataSignal.Task;
+                                }
                             }
 
                             // The poll handler says we can write, lets see
@@ -298,7 +330,7 @@ namespace SockRock
                         }
                     }
 
-                    writeReq.Item4.SetResult(0);
+                    writeReq?.Item4?.SetResult(0);
                     writeReq = null;
                 }
             }
@@ -389,6 +421,20 @@ namespace SockRock
             m_readDataSignal.TrySetResult(true);
 
             base.Dispose(disposing);
+        }
+
+        ///<inheritdoc />
+        void IMonitorItem.SignalReadReady()
+        {
+            if (!m_isDisposed)
+                m_readDataSignal.TrySetResult(true);
+        }
+
+        ///<inheritdoc />
+        void IMonitorItem.SignalWriteReady()
+        {
+            if (!m_isDisposed)
+                m_writeDataSignal.TrySetResult(true);
         }
     }
 }

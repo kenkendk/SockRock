@@ -4,6 +4,10 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Mono.Unix.Native;
+using INTPTR = System.IntPtr;
+//using INTPTR = System.Int32;
+using IDENTTYPE = System.UInt64;
+//using IDENTTYPE = System.UInt32;
 
 namespace SockRock
 {
@@ -15,7 +19,7 @@ namespace SockRock
         /// <summary>
         /// The list of monitored handles
         /// </summary>
-        private readonly Dictionary<int, SocketStream> m_handles = new Dictionary<int, SocketStream>();
+        private readonly Dictionary<IDENTTYPE, IMonitorItem> m_handles = new Dictionary<IDENTTYPE, IMonitorItem>();
 
         /// <summary>
         /// The buffer manager
@@ -38,6 +42,11 @@ namespace SockRock
         private readonly int m_fd;
 
         /// <summary>
+        /// The signal used to communicate with the kevent thread on exit
+        /// </summary>
+        private readonly UserEvent m_closeSignal;
+
+        /// <summary>
         /// The lock used to guard the data structures
         /// </summary>
         private readonly object m_lock = new object();
@@ -57,10 +66,13 @@ namespace SockRock
         /// </summary>
         public KqueueHandler()
         {
+            DebugHelper.WriteLine("{0}: Starting kqueue", System.Diagnostics.Process.GetCurrentProcess().Id);
             m_fd = PInvoke.kqueue();
             if (m_fd < 0)
                 throw new IOException($"Failed to create new kqueue: {Stdlib.GetLastError()}");
-                
+
+            m_closeSignal = new UserEvent(m_fd, 42);
+
             m_runnerThread = new Thread(RunPoll);
             m_runnerThread.Start();
         }
@@ -70,39 +82,27 @@ namespace SockRock
         /// </summary>
         /// <param name="handle">The handle to monitor</param>
         /// <param name="closehandle">If set to <c>true</c>, the socket handle is closed when the stream is disposed</param>
+        /// <param name="creator">The method that creates the instance</param>
         /// <returns>The handle.</returns>
-        public SocketStream MonitorHandle(int handle, bool closehandle = true)
+        private T DoMonitor<T>(int handle, bool closehandle, Func<int, BufferManager, Action, T> creator)
+            where T : IMonitorItem
         {
+            // Typecast if required
+            var h = (IDENTTYPE)handle;
             try
             {
-                SocketStream res;
+                T res;
                 lock (m_lock)
                 {
                     //if (m_handles.Count >= MAX_HANDLES)
                     //return null;
-                    if (m_handles.ContainsKey(handle))
+                    if (m_handles.ContainsKey(h))
                         throw new Exception("Handle is already registered?");
 
-                    m_handles.Add(handle, res = new SocketStream(handle, m_bufferManager, () => this.DeregisterHandle(handle, closehandle)));
+                    m_handles.Add(h, res =  creator(handle, m_bufferManager, () => this.DeregisterHandle(handle, closehandle)));
                 }
 
-                var kev = new struct_kevent[] {
-                    new struct_kevent() {
-                        ident = handle,
-                        filter = EVFILT.READ | EVFILT.WRITE,
-                        flags = EV.ADD | EV.CLEAR,
-                        fflags = 0,
-                        data = IntPtr.Zero,
-                        udata = IntPtr.Zero
-                    }
-                };
-
-                var ret = PInvoke.kevent(m_fd, kev, 1, null, 0, null);
-                if (ret < 0)
-                    throw new IOException($"Failed to add handle to kqueue: {Stdlib.GetLastError()}");
-                if (kev[0].flags.HasFlag(EV.ERROR))
-                    throw new IOException($"Failed to add handle to kqueue: {kev[0].data}");
-
+                var ret = PInvoke.kevent(m_fd, h, EVFILT.READ | EVFILT.WRITE, EV.ADD | EV.CLEAR);
                 var opts = Syscall.fcntl(handle, FcntlCommand.F_GETFL);
                 if (opts < 0)
                     throw new IOException($"Failed to get openflags from handle: {Stdlib.GetLastError()}");
@@ -111,16 +111,40 @@ namespace SockRock
 
                 if (Syscall.fcntl(handle, FcntlCommand.F_SETFL, opts) < 0)
                     throw new IOException($"Failed to set socket O_NOBLOCK: {Stdlib.GetLastError()}");
-                    
+
                 return res;
             }
             catch
             {
                 // Make sure we remove the handle from the list as we are not handling it
                 lock (m_lock)
-                    m_handles.Remove(handle);
+                    m_handles.Remove(h);
+                if (closehandle)
+                    Syscall.close(handle);
                 throw;
             }
+        }        
+
+        /// <summary>
+        /// Begins monitoring the handle and returns a stream for interacting with the handle
+        /// </summary>
+        /// <param name="handle">The handle to monitor</param>
+        /// <param name="closehandle">If set to <c>true</c>, the socket handle is closed when the stream is disposed</param>
+        /// <returns>The handle.</returns>
+        public SocketStream MonitorWithStream(int handle, bool closehandle = true)
+        {
+            return DoMonitor(handle, closehandle, (h, manager, action) => new SocketStream(h, manager, action));
+        }
+
+        /// <summary>
+        /// Begins monitoring the handle and returns a stream for interacting with the handle
+        /// </summary>
+        /// <param name="handle">The handle to monitor</param>
+        /// <param name="closehandle">If set to <c>true</c>, the socket handle is closed when the stream is disposed</param>
+        /// <returns>The handle.</returns>
+        public MonitoredHandle MonitoredHandle(int handle, bool closehandle = true)
+        {
+            return DoMonitor(handle, closehandle, (h, manager, action) => new MonitoredHandle(h, action));
         }
 
         /// <summary>
@@ -130,28 +154,14 @@ namespace SockRock
         /// <param name="close">If set to <c>true</c>, close the socket after deregistering.</param>
         private void DeregisterHandle(int handle, bool close)
         {
+            // Typecast if required
+            var h = (IDENTTYPE)handle;
+
             lock (m_lock)
-                if (m_handles.TryGetValue(handle, out var stream))
-                    m_handles.Remove(handle);
+                if (m_handles.TryGetValue(h, out var stream))
+                    m_handles.Remove(h);
 
-            var kev = new struct_kevent[] {
-                    new struct_kevent() {
-                        ident = handle,
-                        filter = EVFILT.READ | EVFILT.WRITE,
-                        flags = EV.DELETE,
-                        fflags = 0,
-                        data = IntPtr.Zero,
-                        udata = IntPtr.Zero
-
-                    }
-                };
-
-            var ret = PInvoke.kevent(m_fd, kev, 1, null, 0, null);
-            if (ret < 0)
-                throw new IOException($"Failed to remove handle from kqueue: {Stdlib.GetLastError()}");
-            if (kev[0].flags.HasFlag(EV.ERROR))
-                throw new IOException($"Failed remove add handle from kqueue: {kev[0].data}");
-
+            var ret = PInvoke.kevent(m_fd, h, EVFILT.READ | EVFILT.WRITE, EV.DELETE);
             if (close)
                 Syscall.close(handle);
         }
@@ -161,26 +171,50 @@ namespace SockRock
         /// </summary>
         private void RunPoll()
         {
-            // TODO: We need to be able to stop this
-
             var events = new struct_kevent[MAX_EVENTS];
             var timeout = new[] { new Timespec() { tv_sec = 10 } };
+            var stopped = false;
 
-            while (true)
+            DebugHelper.WriteLine("{0}: Running kqueue monitor", System.Diagnostics.Process.GetCurrentProcess().Id);
+            try
             {
-                var count = PInvoke.kevent(m_fd, null, 0, events, events.Length, timeout);
-                for (var i = 0; i < count; i++)
+                while (!stopped)
                 {
-                    if (m_handles.TryGetValue(events[i].ident, out var stream))
+                    var count = PInvoke.kevent(m_fd, null, 0, events, events.Length, timeout);
+                    if (count < 0)
+                    {
+                        DebugHelper.WriteLine($"{System.Diagnostics.Process.GetCurrentProcess().Id}: kqueue stopped: {Stdlib.GetLastError()}");
+                        stopped = true;
+                    }
+
+                    for (var i = 0; i < count; i++)
                     {
                         var ev = events[i];
-                        if (ev.filter.HasFlag(EVFILT.READ) || ev.flags.HasFlag(EV.EOF))
-                            stream.m_readDataSignal.TrySetResult(true);
+                        DebugHelper.WriteLine("{0}: Got signal {2} for {1}", System.Diagnostics.Process.GetCurrentProcess().Id, ev.ident, ev.flags);
+                        if (m_handles.TryGetValue(ev.ident, out var mi))
+                        {
+                            if (ev.filter.HasFlag(EVFILT.READ) || ev.flags.HasFlag(EV.EOF))
+                                mi.SignalReadReady();
 
-                        if (ev.filter.HasFlag(EVFILT.WRITE) || ev.flags.HasFlag(EV.EOF))
-                            stream.m_writeDataSignal.TrySetResult(true);
+                            if (ev.filter.HasFlag(EVFILT.WRITE) || ev.flags.HasFlag(EV.EOF))
+                                mi.SignalWriteReady();
+                        }
+                        else if (ev.ident == m_closeSignal.Handle && events[i].filter.HasFlag(EVFILT.USER))
+                        {
+                            DebugHelper.WriteLine("{0}: Got exit signal!", System.Diagnostics.Process.GetCurrentProcess().Id);
+                            stopped = true;
+                        }
                     }
                 }
+            }
+            catch(Exception ex)
+            {
+                DebugHelper.WriteLine("{0}: kqueue crash", System.Diagnostics.Process.GetCurrentProcess().Id);
+            }
+            finally
+            {
+                DebugHelper.WriteLine("{0}: Closing kqueue", System.Diagnostics.Process.GetCurrentProcess().Id);
+                Syscall.close(m_fd);
             }
         }
 
@@ -206,14 +240,61 @@ namespace SockRock
         /// so the garbage collector can reclaim the memory that the <see cref="T:SockRock.KqueueHandler"/> was occupying.</remarks>
         public void Dispose()
         {
-            Syscall.close(m_fd);
+            DebugHelper.WriteLine("{0}: In dispose", System.Diagnostics.Process.GetCurrentProcess().Id);
+            m_closeSignal?.Set();
+            DebugHelper.WriteLine("{0}: Stop signalled, terminating any attached streams", System.Diagnostics.Process.GetCurrentProcess().Id);
 
             // Drop all active connections, as we no longer get signals
             lock (m_lock)
                 foreach (var k in m_handles)
                     k.Value.Dispose();
+
+            // Close the handle as well
+            Syscall.close(m_fd);
+            DebugHelper.WriteLine("{0}: Dispose completed", System.Diagnostics.Process.GetCurrentProcess().Id);
+
         }
 
+        /// <summary>
+        /// Stops the socket handler
+        /// </summary>
+        /// <param name="waittime">The grace period before the active connections are killed</param>
+        public void Stop(TimeSpan waittime)
+        {
+            DebugHelper.WriteLine("{0}: Stop requested", System.Diagnostics.Process.GetCurrentProcess().Id);
+
+            var endtime = DateTime.Now + waittime;
+            while (true)
+            {
+                var stopped = false;
+                lock (m_lock)
+                    if (m_handles.Count == 0 || endtime < DateTime.Now)
+                    {
+                        DebugHelper.WriteLine("{0}: Stop is calling dispose", System.Diagnostics.Process.GetCurrentProcess().Id);
+                        Dispose();
+                        stopped = true;
+                    }
+
+                if (stopped)
+                {
+                    DebugHelper.WriteLine("{0}: Waiting for thread to stop", System.Diagnostics.Process.GetCurrentProcess().Id);
+
+                    var waitms = (int)Math.Max(TimeSpan.FromSeconds(1).TotalMilliseconds, (endtime - DateTime.Now).TotalMilliseconds);
+                    m_runnerThread.Join(waitms);
+
+                    if (m_runnerThread.IsAlive)
+                    {
+                        DebugHelper.WriteLine("{0}: Aborting thread after timeout", System.Diagnostics.Process.GetCurrentProcess().Id);
+                        m_runnerThread.Abort();
+                    }
+                    return;
+                }
+
+                var seconds = Math.Min(1, (endtime - DateTime.Now).TotalSeconds);
+                if (seconds > 0)
+                    System.Threading.Thread.Sleep(TimeSpan.FromSeconds(seconds));
+            }
+        }
 
         /// <summary>
         /// The communication structure used by kqueue
@@ -224,7 +305,7 @@ namespace SockRock
             /// <summary>
             /// identifier for this event
             /// </summary>
-            public int ident;
+            public IDENTTYPE ident;
             /// <summary>
             /// filter for event
             /// </summary>
@@ -236,15 +317,15 @@ namespace SockRock
             /// <summary>
             /// filter flag value
             /// </summary>
-            public uint fflags;
+            public NOTE fflags;
             /// <summary>
             /// filter data value
             /// </summary>
-            public IntPtr data;
+            public INTPTR data;
             /// <summary>
             /// opaque user data identifier
             /// </summary>
-            public IntPtr udata;
+            public INTPTR udata;
         }
 
         /// <summary>
@@ -342,6 +423,47 @@ namespace SockRock
         }
 
         /// <summary>
+        /// The supported flags
+        /// </summary>
+        private enum NOTE : uint
+        {
+            /// <summary>On input, NOTE_TRIGGER causes the event to be triggered for output.</summary>
+            TRIGGER = 0x01000000,
+
+            /// <summary>ignore input fflags</summary>
+            FFNOP = 0x00000000,
+            /// <summary>and fflags</summary>
+            FFAND = 0x40000000,
+            /// <summary>or fflags</summary>
+            FFOR = 0x80000000,
+            /// <summary>copy fflags</summary>
+            FFCOPY = 0xc0000000,
+            /// <summary>mask for operation</summary>
+            FFCTRLMASK = 0xc0000000,
+            /// <summary>Mask for flags</summary>
+            FFFLAGSMASK = 0x00ffffff,
+            
+            /// <summary>low water mark </summary>
+            LOWAT = 0x00000001,
+            /// <summary>vnode was removed </summary>
+            DELETE = 0x00000001,
+            /// <summary>data contents changed </summary>
+            WRITE = 0x00000002,
+            /// <summary>size increased </summary>
+            EXTEND = 0x00000004,
+            /// <summary>attributes changed </summary>
+            ATTRIB = 0x00000008,
+            /// <summary>link count changed </summary>
+            LINK = 0x00000010,
+            /// <summary>vnode was renamed </summary>
+            RENAME = 0x00000020,
+            /// <summary>vnode access was revoked </summary>
+            REVOKE = 0x00000040,
+            /// <summary>No specific vnode event: to test for EVFILT_READ activation</summary>
+            NONE = 0x00000080,
+        }
+
+        /// <summary>
         /// Wraps P/Invoke functionality
         /// </summary>
         private static class PInvoke
@@ -366,6 +488,93 @@ namespace SockRock
             [DllImport("libc", SetLastError = true)]
             public static extern int kevent(int kq, struct_kevent[] changelist, int nchanges, struct_kevent[] eventlist, int nevents, Mono.Unix.Native.Timespec[] timeout);
 
+            /// <summary>
+            /// Helper method for invoking kevent with a single argument
+            /// </summary>
+            /// <param name="kq">The kqueue descriptor.</param>
+            /// <param name="handle">The handle to register</param>
+            /// <param name="filter">The filter to use</param>
+            /// <param name="flags">The flags to use</param>
+            /// <param name="fflags">The fflags</param>
+            /// <param name="data">The data to associate</param>
+            /// <param name="udata">The udata to associate</param>
+            /// <returns></returns>
+            public static int kevent(int kq, IDENTTYPE handle, EVFILT filter, EV flags, NOTE fflags = 0, INTPTR data = default(INTPTR), INTPTR udata = default(INTPTR))
+            {
+                var kev = new struct_kevent[] {
+                    new struct_kevent() {
+                        ident = (IDENTTYPE)handle,
+                        filter = filter,
+                        flags = flags,
+                        fflags = fflags,
+                        data = data,
+                        udata = udata
+                    }
+                };
+
+                var timeout = new[] { new Timespec() { tv_sec = 10 } };
+
+                var ret = PInvoke.kevent(kq, kev, 1, null, 0, timeout);
+                if (ret < 0)
+                    throw new IOException($"Failed to {flags} handle on kqueue: {Stdlib.GetLastError()}");
+                if (kev[0].flags.HasFlag(EV.ERROR))
+                    throw new IOException($"Failed to {flags} handle on kqueue: {kev[0].data}");
+
+                return ret;
+            }
+        }
+
+        /// <summary>
+        /// Encapsulates a user event
+        /// </summary>
+        private class UserEvent : IDisposable
+        {
+            /// <summary>
+            /// The handle we are using
+            /// </summary>
+            public readonly IDENTTYPE Handle;
+
+            /// <summary>
+            /// The kqueue handle
+            /// </summary>
+            private readonly int m_fd;
+
+            /// <summary>
+            /// Constructs a new user event, and adds it to the kqueue
+            /// </summary>
+            /// <param name="handle">The handle to use for the userevent</param>
+            /// <param name="kqueue">The queue to register for</param>
+            public UserEvent(int kqueue, IDENTTYPE handle)
+            {
+                m_fd = kqueue;
+                Handle = handle;
+
+                PInvoke.kevent(m_fd, Handle, EVFILT.USER, EV.ADD, NOTE.FFCOPY);
+            }
+
+            /// <summary>
+            /// Signals the user event
+            /// </summary>
+            public void Set()
+            {
+                PInvoke.kevent(m_fd, Handle, EVFILT.USER, EV.ENABLE, NOTE.FFCOPY | NOTE.TRIGGER | (NOTE)0x1);
+            }
+
+            /// <summary>
+            /// Resets the user event
+            /// </summary>
+            public void Clear()
+            {
+                PInvoke.kevent(m_fd, Handle, EVFILT.USER, EV.DISABLE, NOTE.FFCOPY | (NOTE)EV.CLEAR);
+            }
+
+            /// <summary>
+            /// Unregisters the event
+            /// </summary>
+            public void Dispose()
+            {
+                PInvoke.kevent(m_fd, Handle, EVFILT.USER, EV.DELETE);
+            }
         }
     }
 }

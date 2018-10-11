@@ -26,7 +26,7 @@ namespace SockRock
         /// <summary>
         /// The list of monitored handles
         /// </summary>
-        private readonly Dictionary<int, SocketStream> m_handles = new Dictionary<int, SocketStream>();
+        private readonly Dictionary<int, IMonitorItem> m_handles = new Dictionary<int, IMonitorItem>();
 
         /// <summary>
         /// The buffer manager
@@ -96,12 +96,36 @@ namespace SockRock
         /// </summary>
         /// <param name="handle">The handle to monitor</param>
         /// <param name="closehandle">If set to <c>true</c>, the socket handle is closed when the stream is disposed</param>
+        /// <returns>The handle.</returns>
+        public SocketStream MonitorWithStream(int handle, bool closehandle = true)
+        {
+            return DoMonitor(handle, closehandle, (h, manager, action) => new SocketStream(h, manager, action));
+        }
+
+        /// <summary>
+        /// Begins monitoring the handle and returns a stream for interacting with the handle
+        /// </summary>
+        /// <param name="handle">The handle to monitor</param>
+        /// <param name="closehandle">If set to <c>true</c>, the socket handle is closed when the stream is disposed</param>
+        /// <returns>The handle.</returns>
+        public MonitoredHandle MonitoredHandle(int handle, bool closehandle = true)
+        {
+            return DoMonitor(handle, closehandle, (h, manager, action) => new MonitoredHandle(h, action));
+        }
+
+        /// <summary>
+        /// Begins monitoring the handle and returns a stream for interacting with the handle
+        /// </summary>
+        /// <param name="handle">The handle to monitor</param>
+        /// <param name="closehandle">If set to <c>true</c>, the socket handle is closed when the stream is disposed</param>
+        /// <param name="creator">The method that creates the instance</param>
         /// <returns>The stream.</returns>
-        public SocketStream MonitorHandle(int handle, bool closehandle = true)
+        private T DoMonitor<T>(int handle, bool closehandle, Func<int, BufferManager, Action, T> creator)
+            where T : IMonitorItem
         {
             try
             {
-                SocketStream res;
+                T res;
                 lock (m_lock)
                 {
                     //if (m_handles.Count >= MAX_HANDLES)
@@ -109,7 +133,7 @@ namespace SockRock
                     if (m_handles.ContainsKey(handle))
                         throw new Exception("Handle is already registered?");
 
-                    m_handles.Add(handle, res = new SocketStream(handle, m_bufferManager, () => this.DeregisterHandle(handle, closehandle)));
+                    m_handles.Add(handle, res = creator(handle, m_bufferManager, () => this.DeregisterHandle(handle, closehandle)));
                 }
 
                 var ev = new EpollEvent()
@@ -179,9 +203,9 @@ namespace SockRock
                 while (!stopped)
                 {
                     DebugHelper.WriteLine("Waiting for epoll socket");
-                var count = Syscall.epoll_wait(m_fd, events, events.Length, -1);
+                    var count = Syscall.epoll_wait(m_fd, events, events.Length, -1);
                     if (count < 0)
-                {
+                    {
                         DebugHelper.WriteLine("Stopped");
                         stopped = true;
                     }
@@ -192,10 +216,10 @@ namespace SockRock
                         DebugHelper.WriteLine("Epoll[{2}] got {0} on {1}", ev.events, ev.fd, i);
                         if (m_handles.TryGetValue(ev.fd, out var mi))
                         {
-                        if (ev.events.HasFlag(EpollEvents.EPOLLIN) || ev.events.HasFlag(EpollEvents.EPOLLRDHUP))
+                            if (ev.events.HasFlag(EpollEvents.EPOLLIN) || ev.events.HasFlag(EpollEvents.EPOLLRDHUP))
                                 mi.SignalReadReady();
 
-                        if (ev.events.HasFlag(EpollEvents.EPOLLOUT) || ev.events.HasFlag(EpollEvents.EPOLLHUP))
+                            if (ev.events.HasFlag(EpollEvents.EPOLLOUT) || ev.events.HasFlag(EpollEvents.EPOLLHUP))
                                 mi.SignalWriteReady();
                         }
                         else if (ev.fd == m_eventfile.Handle)
@@ -203,10 +227,10 @@ namespace SockRock
                             DebugHelper.WriteLine("Got {0} for eventfile", ev.events);
                             if (ev.events.HasFlag(EpollEvents.EPOLLHUP) || ev.events.HasFlag(EpollEvents.EPOLLIN))
                                 stopped = true;
+                        }
                     }
                 }
             }
-        }
             finally
             {
                 DebugHelper.WriteLine("Epoll thread stopping");
