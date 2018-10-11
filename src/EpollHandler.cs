@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using Mono.Unix.Native;
+using System.Runtime.InteropServices;
 
 namespace SockRock
 {
@@ -11,6 +13,16 @@ namespace SockRock
     /// </summary>
     public class EpollHandler : ISocketHandler
     {
+        /// <summary>
+        /// The events we listen to on a socket
+        /// </summary>
+        private static readonly EpollEvents LISTEN_EVENTS =
+                        EpollEvents.EPOLLIN |   // Monitor read
+                        EpollEvents.EPOLLOUT |  // Monitor write
+                        EpollEvents.EPOLLET |   // Monitor read close
+                        EpollEvents.EPOLLRDHUP; // Monitor write close
+
+
         /// <summary>
         /// The list of monitored handles
         /// </summary>
@@ -42,16 +54,34 @@ namespace SockRock
         private readonly object m_lock = new object();
 
         /// <summary>
+        /// The eventfile used to signal stop to epoll_wait
+        /// </summary>
+        private readonly EventFile m_eventfile = new EventFile();
+
+        /// <summary>
         /// The thread that polls data
         /// </summary>
         private readonly Thread m_runnerThread;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.EPollHandler"/> class.
+        /// Initializes a new instance of the <see cref="T:SockRock.EPollHandler"/> class.
         /// </summary>
         public EpollHandler()
         {
-            m_fd = Syscall.epoll_create(0);
+            m_fd = Syscall.epoll_create(1);
+            if (m_fd < 0)
+                throw new Exception($"Call to {nameof(Syscall.epoll_create)} failed with code: {Stdlib.GetLastError()}");
+            
+            var ev = new EpollEvent()
+            {
+                fd = m_eventfile.Handle,
+                events = LISTEN_EVENTS
+            };
+
+            var r = Syscall.epoll_ctl(m_fd, EpollOp.EPOLL_CTL_ADD, m_eventfile.Handle, ref ev);
+            if (r != 0)
+                throw new Exception($"Call to {nameof(Syscall.epoll_ctl)} failed with code {r}: {Stdlib.GetLastError()}");
+            
             m_runnerThread = new Thread(RunPoll);
             m_runnerThread.Start();
         }
@@ -84,11 +114,8 @@ namespace SockRock
 
                 var ev = new EpollEvent()
                 {
-                    events =
-                        EpollEvents.EPOLLIN |  // Monitor read
-                        EpollEvents.EPOLLOUT | // Monitor write
-                        EpollEvents.EPOLLET |  // Monitor read close
-                        EpollEvents.EPOLLRDHUP // Monitor write close
+                    fd = handle,
+                    events = EpollEvents.EPOLLIN | EpollEvents.EPOLLET
                 };
                 var opts = Syscall.fcntl(handle, FcntlCommand.F_GETFL);
                 if (opts < 0)
@@ -110,6 +137,8 @@ namespace SockRock
                 // Make sure we remove the handle from the list as we are not handling it
                 lock (m_lock)
                     m_handles.Remove(handle);
+                if (closehandle)
+                    Syscall.close(handle);
                 throw;
             }
         }
@@ -127,11 +156,8 @@ namespace SockRock
 
             var ev = new EpollEvent()
             {
-                events =
-                    EpollEvents.EPOLLIN |  // Monitor read
-                    EpollEvents.EPOLLOUT | // Monitor write
-                    EpollEvents.EPOLLET |  // Monitor read close
-                    EpollEvents.EPOLLRDHUP // Monitor write close
+                fd = handle,
+                events = LISTEN_EVENTS
             };
             var r = Syscall.epoll_ctl(m_fd, EpollOp.EPOLL_CTL_DEL, handle, ref ev);
             if (r != 0)
@@ -146,44 +172,103 @@ namespace SockRock
         /// </summary>
         private void RunPoll()
         {
-            // TODO: We need to be able to stop this
-
             var events = new EpollEvent[MAX_EVENTS];
-            while (true)
+            var stopped = false;
+            try
             {
-                var count = Syscall.epoll_wait(m_fd, events, events.Length, -1);
-                for (var i = 0; i < count; i++)
+                while (!stopped)
                 {
-                    if (m_handles.TryGetValue(events[i].fd, out var stream))
+                    DebugHelper.WriteLine("Waiting for epoll socket");
+                var count = Syscall.epoll_wait(m_fd, events, events.Length, -1);
+                    if (count < 0)
+                {
+                        DebugHelper.WriteLine("Stopped");
+                        stopped = true;
+                    }
+
+                    for (var i = 0; i < count; i++)
                     {
                         var ev = events[i];
+                        DebugHelper.WriteLine("Epoll[{2}] got {0} on {1}", ev.events, ev.fd, i);
+                        if (m_handles.TryGetValue(ev.fd, out var mi))
+                        {
                         if (ev.events.HasFlag(EpollEvents.EPOLLIN) || ev.events.HasFlag(EpollEvents.EPOLLRDHUP))
-                            stream.m_readDataSignal.TrySetResult(true);
+                                mi.SignalReadReady();
 
                         if (ev.events.HasFlag(EpollEvents.EPOLLOUT) || ev.events.HasFlag(EpollEvents.EPOLLHUP))
-                            stream.m_writeDataSignal.TrySetResult(true);
+                                mi.SignalWriteReady();
+                        }
+                        else if (ev.fd == m_eventfile.Handle)
+                        {
+                            DebugHelper.WriteLine("Got {0} for eventfile", ev.events);
+                            if (ev.events.HasFlag(EpollEvents.EPOLLHUP) || ev.events.HasFlag(EpollEvents.EPOLLIN))
+                                stopped = true;
                     }
                 }
             }
         }
+            finally
+            {
+                DebugHelper.WriteLine("Epoll thread stopping");
+                Syscall.close(m_fd);
+            }
+        }
 
         /// <summary>
-        /// Releases all resource used by the <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.EpollHandler"/> object.
+        /// Stops the socket handler
+        /// </summary>
+        /// <param name="waittime">The grace period before the active connections are killed</param>
+        public void Stop(TimeSpan waittime)
+        {
+            var endtime = DateTime.Now + waittime;
+            while (true)
+            {
+                var stopped = false;
+                lock (m_lock)
+                    if (m_handles.Count == 0 || endtime < DateTime.Now)
+                    {
+                        Dispose();
+                        stopped = true;
+                    }
+
+                if (stopped)
+                {
+                    var waitms = (int)Math.Max(TimeSpan.FromSeconds(1).TotalMilliseconds, (endtime - DateTime.Now).TotalMilliseconds);
+                    m_runnerThread.Join(waitms);
+
+                    if (m_runnerThread.IsAlive)
+                        m_runnerThread.Abort();
+                    return;
+                }
+
+                var seconds = Math.Min(1, (endtime - DateTime.Now).TotalSeconds);
+                if (seconds > 0)
+                    System.Threading.Thread.Sleep(TimeSpan.FromSeconds(seconds));
+            }
+        }
+
+
+        /// <summary>
+        /// Releases all resource used by the <see cref="T:SockRock.EpollHandler"/> object.
         /// </summary>
         /// <remarks>Call <see cref="Dispose"/> when you are finished using the
-        /// <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.EpollHandler"/>. The <see cref="Dispose"/> method leaves the
-        /// <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.EpollHandler"/> in an unusable state. After calling
+        /// <see cref="T:SockRock.EpollHandler"/>. The <see cref="Dispose"/> method leaves the
+        /// <see cref="T:SockRock.EpollHandler"/> in an unusable state. After calling
         /// <see cref="Dispose"/>, you must release all references to the
-        /// <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.EpollHandler"/> so the garbage collector can reclaim the
-        /// memory that the <see cref="T:Ceen.Httpd.Cli.Runner.SubProcess.EpollHandler"/> was occupying.</remarks>
+        /// <see cref="T:SockRock.EpollHandler"/> so the garbage collector can reclaim the
+        /// memory that the <see cref="T:SockRock.EpollHandler"/> was occupying.</remarks>
         public void Dispose()
         {
-            Syscall.close(m_fd);
+            DebugHelper.WriteLine("Closing epoll socket");
+            m_eventfile?.Write(1);
+            m_eventfile?.Dispose();
+            DebugHelper.WriteLine("Closed epoll socket");
 
             // Drop all active connections, as we no longer get signals
             lock (m_lock)
                 foreach (var k in m_handles)
-                    k.Value.Dispose();
+                    Task.Run(() => k.Value.Dispose());
         }
+
     }
 }
