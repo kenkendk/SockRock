@@ -127,16 +127,18 @@ namespace SockRock
                 };
                 msghdr.msg_iov = iovec;
                 msghdr.msg_iovlen = 1;
-                DebugHelper.WriteLine("Calling recvmsg");
+                DebugHelper.WriteLine("{0}: Calling recvmsg", System.Diagnostics.Process.GetCurrentProcess().Id);
                 datalen = Mono.Unix.Native.Syscall.recvmsg(sock, msghdr, 0);
-                DebugHelper.WriteLine("Called recvmsg: {0}", datalen);
+                DebugHelper.WriteLine("{0}: Called recvmsg: {1}", System.Diagnostics.Process.GetCurrentProcess().Id, datalen);
+                if (datalen == 0)
+                    return null;
                 if (datalen < 0)
                     Mono.Unix.UnixMarshal.ThrowExceptionForLastError();
             }
 
             // Get the offset of the first message
             var offset = Mono.Unix.Native.Syscall.CMSG_FIRSTHDR(msghdr);
-            DebugHelper.WriteLine("Called recvmsg, offset: {0}", offset);
+            DebugHelper.WriteLine("{0}: Called recvmsg, offset: {1}", System.Diagnostics.Process.GetCurrentProcess().Id, offset);
 
             // Extract the bytes
             var recvHdr = Mono.Unix.Native.Cmsghdr.ReadFromBuffer(msghdr, offset);
@@ -210,8 +212,14 @@ namespace SockRock
                 DebugHelper.WriteLine("Calling recvmsg");
                 while ((datalen = Mono.Unix.Native.Syscall.recvmsg(handle.Handle, msghdr, 0)) != -1)
                 {
-                    datalen = Mono.Unix.Native.Syscall.recvmsg(handle.Handle, msghdr, 0);
                     DebugHelper.WriteLine("Called recvmsg: {0}", datalen);
+                    if (datalen == 0)
+                    {
+                        DebugHelper.WriteLine("No more data, stopping recv_fds");
+                        handle.Dispose();
+                        break;
+                    }
+
                     if (datalen < 0)
                         Mono.Unix.UnixMarshal.ThrowExceptionForLastError();
 
@@ -257,7 +265,7 @@ namespace SockRock
                 }
             }
             var lasterr = Mono.Unix.Native.Stdlib.GetLastError();
-            if (res.Count == 0 && lasterr != Mono.Unix.Native.Errno.EAGAIN && lasterr != Mono.Unix.Native.Errno.EWOULDBLOCK)
+            if (res.Count == 0 && datalen < 0 && lasterr != Mono.Unix.Native.Errno.EAGAIN && lasterr != Mono.Unix.Native.Errno.EWOULDBLOCK)
                 throw new Exception($"Unexpected error code while reading socket: {lasterr}");
 
             return res;
