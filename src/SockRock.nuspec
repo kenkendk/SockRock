@@ -2,7 +2,7 @@
 <package >
   <metadata>
     <id>SockRock</id>
-    <version>1.0.1</version>
+    <version>1.0.2</version>
     <title>SockRock</title>
     <authors>Kenneth Skovhede</authors>
     <owners>Kenneth Skovhede</owners>
@@ -10,7 +10,7 @@
     <projectUrl>https://github.com/kenkendk/sockrock</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Native socket library in C#</description>
-    <releaseNotes>Fixed SO_REUSEADDR and added TCP_NODELAY for flush.</releaseNotes>
+    <releaseNotes>Fixed listening events in epoll that would cause timeouts.</releaseNotes>
     <copyright>Copyright 2017, Kenneth Skovhede</copyright>
     <tags>Socket ScmRights epoll kqueue async</tags>
     <dependencies>
