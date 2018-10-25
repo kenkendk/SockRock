@@ -17,10 +17,10 @@ namespace SockRock
         /// The events we listen to on a socket
         /// </summary>
         private static readonly EpollEvents LISTEN_EVENTS =
-                        EpollEvents.EPOLLIN |   // Monitor read
-                        EpollEvents.EPOLLOUT |  // Monitor write
-                        EpollEvents.EPOLLET |   // Monitor read close
-                        EpollEvents.EPOLLRDHUP; // Monitor write close
+                        EpollEvents.EPOLLIN |     // Monitor read
+                        EpollEvents.EPOLLOUT |    // Monitor write
+                        EpollEvents.EPOLLRDHUP |  // Monitor read close
+                        EpollEvents.EPOLLHUP;     // Monitor write close
 
 
         /// <summary>
@@ -75,7 +75,7 @@ namespace SockRock
             var ev = new EpollEvent()
             {
                 fd = m_eventfile.Handle,
-                events = LISTEN_EVENTS
+                events = LISTEN_EVENTS | EpollEvents.EPOLLET
             };
 
             var r = Syscall.epoll_ctl(m_fd, EpollOp.EPOLL_CTL_ADD, m_eventfile.Handle, ref ev);
@@ -139,7 +139,8 @@ namespace SockRock
                 var ev = new EpollEvent()
                 {
                     fd = handle,
-                    events = EpollEvents.EPOLLIN | EpollEvents.EPOLLET
+                    events =  // Listen and use Edge Triggered
+                        LISTEN_EVENTS | EpollEvents.EPOLLET
                 };
                 var opts = Syscall.fcntl(handle, FcntlCommand.F_GETFL);
                 if (opts < 0)
