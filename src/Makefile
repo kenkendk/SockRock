@@ -1,7 +1,7 @@
 all: build
 
 PROJECT_NAME=SockRock
-DEPENDS_CS=$(shell find . -type f -name *.cs | xargs echo)
+DEPENDS_CS=$(shell find . -type f -name \*.cs | xargs echo)
 VERSION=$(shell cat $(PROJECT_NAME).nuspec | grep "<version>" | cut -f 2 -d ">" | cut -f 1 -d "<" )
 
 build: $(PROJECT_NAME).sln $(DEPENDS_CS)
