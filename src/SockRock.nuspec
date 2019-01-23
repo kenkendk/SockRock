@@ -2,7 +2,7 @@
 <package >
   <metadata>
     <id>SockRock</id>
-    <version>1.0.2</version>
+    <version>1.0.3</version>
     <title>SockRock</title>
     <authors>Kenneth Skovhede</authors>
     <owners>Kenneth Skovhede</owners>
@@ -10,8 +10,8 @@
     <projectUrl>https://github.com/kenkendk/sockrock</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Native socket library in C#</description>
-    <releaseNotes>Fixed listening events in epoll that would cause timeouts.</releaseNotes>
-    <copyright>Copyright 2017, Kenneth Skovhede</copyright>
+    <releaseNotes>Fixed 32bit support for kevent.</releaseNotes>
+    <copyright>Copyright 2019, Kenneth Skovhede</copyright>
     <tags>Socket ScmRights epoll kqueue async</tags>
     <dependencies>
         <dependency id="Mono.Posix.NETStandard" version="1.0.0" />
