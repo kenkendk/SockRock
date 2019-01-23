@@ -5,9 +5,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Mono.Unix.Native;
 using INTPTR = System.IntPtr;
-//using INTPTR = System.Int32;
 using IDENTTYPE = System.UInt64;
-//using IDENTTYPE = System.UInt32;
 
 namespace SockRock
 {
@@ -190,8 +188,9 @@ namespace SockRock
                     for (var i = 0; i < count; i++)
                     {
                         var ev = events[i];
+                        var ident = (IDENTTYPE)ev.ident.ToInt64();
                         DebugHelper.WriteLine("{0}: Got signal {2} for {1}", System.Diagnostics.Process.GetCurrentProcess().Id, ev.ident, ev.flags);
-                        if (m_handles.TryGetValue(ev.ident, out var mi))
+                        if (m_handles.TryGetValue(ident, out var mi))
                         {
                             if (ev.filter.HasFlag(EVFILT.READ) || ev.flags.HasFlag(EV.EOF))
                                 mi.SignalReadReady();
@@ -199,7 +198,7 @@ namespace SockRock
                             if (ev.filter.HasFlag(EVFILT.WRITE) || ev.flags.HasFlag(EV.EOF))
                                 mi.SignalWriteReady();
                         }
-                        else if (ev.ident == m_closeSignal.Handle && events[i].filter.HasFlag(EVFILT.USER))
+                        else if (ident == m_closeSignal.Handle && ev.filter.HasFlag(EVFILT.USER))
                         {
                             DebugHelper.WriteLine("{0}: Got exit signal!", System.Diagnostics.Process.GetCurrentProcess().Id);
                             stopped = true;
@@ -305,7 +304,7 @@ namespace SockRock
             /// <summary>
             /// identifier for this event
             /// </summary>
-            public IDENTTYPE ident;
+            public INTPTR ident;
             /// <summary>
             /// filter for event
             /// </summary>
@@ -503,7 +502,7 @@ namespace SockRock
             {
                 var kev = new struct_kevent[] {
                     new struct_kevent() {
-                        ident = (IDENTTYPE)handle,
+                        ident = new INTPTR((long)handle),
                         filter = filter,
                         flags = flags,
                         fflags = fflags,
