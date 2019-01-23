@@ -41,6 +41,7 @@ namespace SockRock
         /// <summary>
         /// Constructs a new monitored handle
         /// </summary>
+        /// <param name="handle">The handle to monitor</param>
         /// <param name="deregister">The method used to deregister this entry</param>
         public MonitoredHandle(int handle, Action deregister)
         {

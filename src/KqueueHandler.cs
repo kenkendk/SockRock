@@ -208,7 +208,7 @@ namespace SockRock
             }
             catch(Exception ex)
             {
-                DebugHelper.WriteLine("{0}: kqueue crash", System.Diagnostics.Process.GetCurrentProcess().Id);
+                DebugHelper.WriteLine("{0}: kqueue crash: {1}", System.Diagnostics.Process.GetCurrentProcess().Id, ex);
             }
             finally
             {
