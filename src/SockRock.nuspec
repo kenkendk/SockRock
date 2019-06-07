@@ -2,7 +2,7 @@
 <package >
   <metadata>
     <id>SockRock</id>
-    <version>1.0.3</version>
+    <version>1.0.4</version>
     <title>SockRock</title>
     <authors>Kenneth Skovhede</authors>
     <owners>Kenneth Skovhede</owners>
@@ -11,7 +11,7 @@
     <projectUrl>https://github.com/kenkendk/sockrock</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Native socket library in C#</description>
-    <releaseNotes>Fixed 32bit support for kevent.</releaseNotes>
+    <releaseNotes>Fixed a race condition.</releaseNotes>
     <copyright>Copyright 2019, Kenneth Skovhede</copyright>
     <tags>Socket ScmRights epoll kqueue async</tags>
     <dependencies>
