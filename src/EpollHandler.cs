@@ -64,6 +64,16 @@ namespace SockRock
         private readonly Thread m_runnerThread;
 
         /// <summary>
+        /// The monitor task for the runner thread
+        /// </summary>
+        private readonly TaskCompletionSource<bool> m_runnerTask = new TaskCompletionSource<bool>();
+
+        /// <summary>
+        /// An awaitable task that monitors the internal runner thread
+        /// </summary>
+        public Task WaitForShutdownAsync { get => m_runnerTask.Task; }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="T:SockRock.EPollHandler"/> class.
         /// </summary>
         public EpollHandler()
@@ -199,6 +209,7 @@ namespace SockRock
         {
             var events = new EpollEvent[MAX_EVENTS];
             var stopped = false;
+
             try
             {
                 while (!stopped)
@@ -236,9 +247,18 @@ namespace SockRock
                         }
                     }
                 }
+
+                m_runnerTask.TrySetResult(true);
+            }
+            catch (Exception ex)
+            {
+                m_runnerTask.TrySetException(ex);
+                Console.WriteLine("*** Epoll monitor crashed, no progress will be reported on monitored sockets ***");
+                Console.WriteLine(ex);
             }
             finally
             {
+                m_runnerTask.TrySetCanceled();
                 DebugHelper.WriteLine("Epoll thread stopping");
                 Syscall.close(m_fd);
             }
@@ -255,7 +275,7 @@ namespace SockRock
             {
                 var stopped = false;
                 lock (m_lock)
-                    if (m_handles.Count == 0 || endtime < DateTime.Now)
+                    if (m_handles.Count == 0 || endtime < DateTime.Now || m_runnerTask.Task.IsCompleted)
                     {
                         Dispose();
                         stopped = true;
@@ -290,8 +310,13 @@ namespace SockRock
         public void Dispose()
         {
             DebugHelper.WriteLine("Closing epoll socket");
-            m_eventfile?.Write(1);
-            m_eventfile?.Dispose();
+            // No point signalling if the runner has stopped            
+            // TODO: Potential race between checking and writing
+            // but we need the check as the write will sometimes
+            // deadlock if the runner is not reading the signal
+            if (!m_runnerTask.Task.IsCompleted)
+                m_eventfile.Write(1);
+            m_eventfile.Dispose();
             DebugHelper.WriteLine("Closed epoll socket");
 
             // Drop all active connections, as we no longer get signals

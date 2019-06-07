@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Threading.Tasks;
+
 namespace SockRock
 {
     /// <summary>
@@ -27,5 +29,10 @@ namespace SockRock
         /// </summary>
         /// <param name="waittime">The grace period before the active connections are killed</param>
         void Stop(TimeSpan waittime);
+
+        /// <summary>
+        /// An awaitable task that monitors the internal runner thread
+        /// </summary>
+        Task WaitForShutdownAsync { get; }
     }
 }

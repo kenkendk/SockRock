@@ -6,6 +6,7 @@ using System.Threading;
 using Mono.Unix.Native;
 using INTPTR = System.IntPtr;
 using IDENTTYPE = System.UInt64;
+using System.Threading.Tasks;
 
 namespace SockRock
 {
@@ -53,6 +54,16 @@ namespace SockRock
         /// The thread that polls data
         /// </summary>
         private readonly Thread m_runnerThread;
+
+        /// <summary>
+        /// The monitor task for the runner thread
+        /// </summary>
+        private readonly TaskCompletionSource<bool> m_runnerTask = new TaskCompletionSource<bool>();
+
+        /// <summary>
+        /// An awaitable task that monitors the internal runner thread
+        /// </summary>
+        public Task WaitForShutdownAsync { get => m_runnerTask.Task; }
 
         /// <summary>
         /// Gets the number of monitored handles
@@ -210,13 +221,17 @@ namespace SockRock
                         }
                     }
                 }
+
+                m_runnerTask.TrySetResult(true);
             }
             catch(Exception ex)
             {
+                m_runnerTask.TrySetException(ex);
                 DebugHelper.WriteLine("{0}: kqueue crash: {1}", System.Diagnostics.Process.GetCurrentProcess().Id, ex);
             }
             finally
             {
+                m_runnerTask.TrySetCanceled();
                 DebugHelper.WriteLine("{0}: Closing kqueue", System.Diagnostics.Process.GetCurrentProcess().Id);
                 Syscall.close(m_fd);
             }
@@ -245,7 +260,11 @@ namespace SockRock
         public void Dispose()
         {
             DebugHelper.WriteLine("{0}: In dispose", System.Diagnostics.Process.GetCurrentProcess().Id);
-            m_closeSignal?.Set();
+            // Don't signal if the runner has stopped
+            // TODO: A race can happen here between checking and calling
+            // but we need to avoid signalling as it will otherwise block
+            if (!m_runnerTask.Task.IsCompleted)
+                m_closeSignal?.Set();
             DebugHelper.WriteLine("{0}: Stop signalled, terminating any attached streams", System.Diagnostics.Process.GetCurrentProcess().Id);
 
             // Drop all active connections, as we no longer get signals
@@ -272,7 +291,7 @@ namespace SockRock
             {
                 var stopped = false;
                 lock (m_lock)
-                    if (m_handles.Count == 0 || endtime < DateTime.Now)
+                    if (m_handles.Count == 0 || endtime < DateTime.Now || m_runnerTask.Task.IsCompleted)
                     {
                         DebugHelper.WriteLine("{0}: Stop is calling dispose", System.Diagnostics.Process.GetCurrentProcess().Id);
                         Dispose();
