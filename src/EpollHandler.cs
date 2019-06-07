@@ -215,7 +215,12 @@ namespace SockRock
                     {
                         var ev = events[i];
                         DebugHelper.WriteLine("Epoll[{2}] got {0} on {1}", ev.events, ev.fd, i);
-                        if (m_handles.TryGetValue(ev.fd, out var mi))
+                        IMonitorItem mi = null;
+                        bool known = false;
+                        lock(m_lock)
+                            known = m_handles.TryGetValue(ev.fd, out mi);
+
+                        if (known)
                         {
                             if (ev.events.HasFlag(EpollEvents.EPOLLIN) || ev.events.HasFlag(EpollEvents.EPOLLRDHUP))
                                 mi.SignalReadReady();

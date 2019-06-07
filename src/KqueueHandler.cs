@@ -190,7 +190,12 @@ namespace SockRock
                         var ev = events[i];
                         var ident = (IDENTTYPE)ev.ident.ToInt64();
                         DebugHelper.WriteLine("{0}: Got signal {2} for {1}", System.Diagnostics.Process.GetCurrentProcess().Id, ev.ident, ev.flags);
-                        if (m_handles.TryGetValue(ident, out var mi))
+                        IMonitorItem mi;
+                        bool known;
+                        lock(m_lock)
+                            known = m_handles.TryGetValue(ident, out mi);
+
+                        if (known)
                         {
                             if (ev.filter.HasFlag(EVFILT.READ) || ev.flags.HasFlag(EV.EOF))
                                 mi.SignalReadReady();
