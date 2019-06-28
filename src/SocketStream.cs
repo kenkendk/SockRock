@@ -180,7 +180,7 @@ namespace SockRock
                         if (buffer.Key == null)
                             buffer = manager.Acquire();
 
-                        var r = Syscall.read(m_socket, buffer.Value.AddrOfPinnedObject(), (ulong)buffer.Key.Length);
+                        var r = Syscall.read(m_socket, buffer.Value.AddrOfPinnedObject(), (ulong)Math.Min(buffer.Key.Length, readReq.Item3));
                         if (r == 0)
                         {
                             ReaderClosed = true;
