@@ -136,7 +136,12 @@ namespace SockRock
                     if (m_handles.ContainsKey(handle))
                         throw new InvalidOperationException("Handle is already registered?");
 
-                    m_handles.Add(handle, res = creator(handle, m_bufferManager, () => this.DeregisterHandle(handle, closehandle)));
+                    res = creator(
+                        handle, 
+                        m_bufferManager, 
+                        () => this.DeregisterHandle(handle, closehandle)
+                    );
+                    m_handles.Add(handle, res);
                 }
 
                 var ev = new EpollEvent()

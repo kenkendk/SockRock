@@ -81,7 +81,7 @@ namespace SockRock
         /// <summary>
         /// The task signaling completion of the stream
         /// </summary>
-        public readonly Task RunnerTask;
+        public Task RunnerTask { get; private set; }
 
         /// <summary>
         /// Initializes a new instance of the

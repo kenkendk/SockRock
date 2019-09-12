@@ -101,10 +101,18 @@ namespace SockRock
                     if (m_handles.ContainsKey(h))
                         throw new InvalidOperationException("Handle is already registered?");
 
-                    m_handles.Add(h, res =  creator(handle, m_bufferManager, () => this.DeregisterHandle(handle, closehandle)));
+                    res = creator(
+                        handle, 
+                        m_bufferManager, 
+                        () => this.DeregisterHandle(handle, closehandle)
+                    );
+                    m_handles.Add(h, res);
                 }
 
                 var ret = PInvoke.kevent(m_fd, h, EVFILT.READ | EVFILT.WRITE, EV.ADD | EV.CLEAR);
+                if (ret < 0)
+                    throw new IOException($"Got return value {ret} when adding a new monitor");
+
                 var opts = Syscall.fcntl(handle, FcntlCommand.F_GETFL);
                 if (opts < 0)
                     throw new IOException($"Failed to get openflags from handle: {Stdlib.GetLastError()}");
@@ -164,6 +172,8 @@ namespace SockRock
                     m_handles.Remove(h);
 
             var ret = PInvoke.kevent(m_fd, h, EVFILT.READ | EVFILT.WRITE, EV.DELETE);
+            if (ret < 0)
+                throw new IOException($"Got return value {ret} when removing a monitor");
             if (close)
                 Syscall.close(handle);
         }

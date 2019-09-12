@@ -28,7 +28,7 @@ namespace SockRock
         /// <summary>
         /// A flag keeping track of the disposed state
         /// </summary>
-        private bool m_disposed = false;
+        private bool m_disposed;
 
         /// <summary>
         /// Enqueues data in the queue
