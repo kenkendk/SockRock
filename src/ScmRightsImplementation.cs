@@ -119,7 +119,7 @@ namespace SockRock
 
             using(var ptr_buffer = new GuardedHandle(buffer))
             {
-                var iovec = new Mono.Unix.Native.Iovec[] {
+                var iovec = new[] {
                     new Mono.Unix.Native.Iovec {
                         iov_base = ptr_buffer.Address,
                         iov_len = (ulong) buffer.Length,
