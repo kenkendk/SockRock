@@ -1,5 +1,9 @@
 SockRock - A native socket handling library for C#
 ==================================================
+[![Nuget count](https://img.shields.io/nuget/v/SockRock.svg)](https://www.nuget.org/packages/SockRock/)
+[![License](https://img.shields.io/github/license/kenkendk/SockRock.svg)](https://github.com/kenkendk/SockRock/blob/master/LICENSE)
+[![Issues open](https://img.shields.io/github/issues-raw/kenkendk/SockRock.svg)](https://github.com/kenkendk/SockRock/issues/)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/41cd7874645f42f2940a930fe53cd238)](https://www.codacy.com/manual/kenneth/SockRock?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=kenkendk/SockRock&amp;utm_campaign=Badge_Grade)
 
 [Install SockRock from NuGet](https://www.nuget.org/packages/SockRock/):
 ```bash
