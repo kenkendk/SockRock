@@ -13,7 +13,7 @@ namespace SockRock
     /// <summary>
     /// Wrapping kqueue functionality in a thread safe class
     /// </summary>
-    public class KqueueHandler : ISocketHandler
+    public class KqueueHandler : ISocketHandler, IDisposable
     {
         /// <summary>
         /// The list of monitored handles
@@ -28,12 +28,7 @@ namespace SockRock
         /// <summary>
         /// The maximum number of events to handle in a single call to kevent
         /// </summary>
-        public const int MAX_EVENTS = 100;
-
-        /// <summary>
-        /// The size of the read/write buffers
-        /// </summary>
-        private const int BUFFER_SIZE = 10 * 1024;
+        private const int MAX_EVENTS = 100;
 
         /// <summary>
         /// The epoll file descriptor
@@ -103,10 +98,8 @@ namespace SockRock
                 T res;
                 lock (m_lock)
                 {
-                    //if (m_handles.Count >= MAX_HANDLES)
-                    //return null;
                     if (m_handles.ContainsKey(h))
-                        throw new Exception("Handle is already registered?");
+                        throw new InvalidOperationException("Handle is already registered?");
 
                     m_handles.Add(h, res =  creator(handle, m_bufferManager, () => this.DeregisterHandle(handle, closehandle)));
                 }
@@ -524,7 +517,7 @@ namespace SockRock
             /// <returns></returns>
             public static int kevent(int kq, IDENTTYPE handle, EVFILT filter, EV flags, NOTE fflags = 0, INTPTR data = default(INTPTR), INTPTR udata = default(INTPTR))
             {
-                var kev = new struct_kevent[] {
+                var kev = new [] {
                     new struct_kevent() {
                         ident = new INTPTR((long)handle),
                         filter = filter,

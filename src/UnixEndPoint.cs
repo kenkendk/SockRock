@@ -49,7 +49,7 @@ namespace SockRock
         /// Gets the address family.
         /// </summary>
         /// <value>The address family.</value>
-        public override AddressFamily AddressFamily { get { return AddressFamily.Unix; } }
+        public override AddressFamily AddressFamily { get { return System.Net.Sockets.AddressFamily.Unix; } }
 
         /// <summary>
         /// Creates an <seealso cref="EndPoint"/> from a <seealso cref="SocketAddress"/>

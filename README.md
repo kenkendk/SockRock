@@ -2,7 +2,7 @@ SockRock - A native socket handling library for C#
 ==================================================
 
 [Install SockRock from NuGet](https://www.nuget.org/packages/SockRock/):
-```
+```bash
 PM> Install-Package SockRock
 ```
 
@@ -15,4 +15,3 @@ To support this, the library offers a simple interface to `ScmRights` for passin
 This allows a mostly drop-in replacement for `System.Net.NetworkStream` with handles passed from other processes.
 
 Since Mono accesses the handles in unexpected ways, it is not always possible to simply extract the handle and pass it. To remedy this, SockRock also contain a `ListenSocket` (and `AsyncListenSocket`) implementation that performs native `listen` and `bind` operations, giving direct access to the handles.
-

@@ -60,9 +60,9 @@ namespace SockRock
         /// </summary>
         /// <param name="throwIfDisposed">If set to <c>true</c> throws an exception if the instance is disposed, otherwise returns <c>null</c></param>
         /// <returns>The item from the queue.</returns>
-        public async Task<Tuple<byte[], int, int, TaskCompletionSource<int>, CancellationToken>> DequeueAsync(bool throwIfDisposed)
+        public Task<Tuple<byte[], int, int, TaskCompletionSource<int>, CancellationToken>> DequeueAsync(bool throwIfDisposed)
         {
-            return (await TryDequeueAsync(Timeout.InfiniteTimeSpan, throwIfDisposed));
+            return TryDequeueAsync(Timeout.InfiniteTimeSpan, throwIfDisposed);
         }
 
         /// <summary>
@@ -101,10 +101,10 @@ namespace SockRock
                 }
 
                 if (timeout == Timeout.InfiniteTimeSpan)
-                    await m_waitTask.Task;
+                    await m_waitTask.Task.ConfigureAwait(false);
                 else
                 {
-                    if (await Task.WhenAny(Task.Delay(timeout), m_waitTask.Task) != m_waitTask.Task)
+                    if (await Task.WhenAny(Task.Delay(timeout), m_waitTask.Task).ConfigureAwait(false) != m_waitTask.Task)
                         return null;
                 }
             }

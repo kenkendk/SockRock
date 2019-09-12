@@ -128,14 +128,14 @@ namespace SockRock
                     readReq =
                         (ReaderClosed || buffer.Key == null)
                         ? null
-                        : await m_readRequests.TryDequeueAsync(MAX_WAIT_TIME, false);
+                        : await m_readRequests.TryDequeueAsync(MAX_WAIT_TIME, false).ConfigureAwait(false);
 
                     // Nope, relinquish control of our buffer
                     // and wait for a request
                     if (readReq == null)
                     {
                         buffer = manager.Release(buffer);
-                        readReq = await m_readRequests.DequeueAsync(false);
+                        readReq = await m_readRequests.DequeueAsync(false).ConfigureAwait(false);
                         // If we are disposed, just stop listening
                         if (readReq == null)
                             return;
@@ -154,13 +154,13 @@ namespace SockRock
                         if (readBlocking)
                         {
                             // Check if we can read data, otherwise release the buffer
-                            if (await Task.WhenAny(Task.Delay(MAX_WAIT_TIME), m_readDataSignal.Task) != m_readDataSignal.Task)
+                            if (await Task.WhenAny(Task.Delay(MAX_WAIT_TIME), m_readDataSignal.Task).ConfigureAwait(false) != m_readDataSignal.Task)
                             {
                                 buffer = manager.Release(buffer);
                                 var rt = ReadTimeout;
                                 if (rt > 0)
                                 {
-                                    if (await Task.WhenAny(m_readDataSignal.Task, Task.Delay(rt)) != m_readDataSignal.Task)
+                                    if (await Task.WhenAny(m_readDataSignal.Task, Task.Delay(rt)).ConfigureAwait(false) != m_readDataSignal.Task)
                                     {
                                         readReq.Item4.TrySetException(new TimeoutException());
                                         break;
@@ -168,7 +168,7 @@ namespace SockRock
                                 }
                                 else
                                 {
-                                    await m_readDataSignal.Task;
+                                    await m_readDataSignal.Task.ConfigureAwait(false);
                                 }
                             }
 
@@ -248,14 +248,14 @@ namespace SockRock
                     writeReq =
                         (buffer.Key == null)
                         ? null
-                        : await m_writeRequests.TryDequeueAsync(MAX_WAIT_TIME, false);
+                        : await m_writeRequests.TryDequeueAsync(MAX_WAIT_TIME, false).ConfigureAwait(false);
 
                     // No requests, so relinquish control of our buffer
                     // and wait for a request
                     if (writeReq == null)
                     {
                         buffer = manager.Release(buffer);
-                        writeReq = await m_writeRequests.DequeueAsync(false);
+                        writeReq = await m_writeRequests.DequeueAsync(false).ConfigureAwait(false);
 
                         // If we are disposed, just stop listening
                         if (writeReq == null)
@@ -277,7 +277,7 @@ namespace SockRock
                         if (writeBlocking)
                         {
                             // Check if we can read data, otherwise release the buffer
-                            if (await Task.WhenAny(Task.Delay(MAX_WAIT_TIME), m_writeDataSignal.Task) != m_writeDataSignal.Task)
+                            if (await Task.WhenAny(Task.Delay(MAX_WAIT_TIME), m_writeDataSignal.Task).ConfigureAwait(false) != m_writeDataSignal.Task)
                             {
                                 buffer = manager.Release(buffer);
                                 var rt = WriteTimeout;
@@ -285,7 +285,7 @@ namespace SockRock
                                 {
                                     // TODO: Figure out if the timeout is for the whole operation, 
                                     // or just for time between progress as we do here
-                                    if (await Task.WhenAny(m_writeDataSignal.Task, Task.Delay(rt)) != m_writeDataSignal.Task)
+                                    if (await Task.WhenAny(m_writeDataSignal.Task, Task.Delay(rt)).ConfigureAwait(false) != m_writeDataSignal.Task)
                                     {
                                         writeReq.Item4.TrySetException(new TimeoutException());
                                         // Avoid setting the result to a partial result
@@ -295,7 +295,7 @@ namespace SockRock
                                 }
                                 else
                                 {
-                                    await m_writeDataSignal.Task;
+                                    await m_writeDataSignal.Task.ConfigureAwait(false);
                                 }
                             }
 

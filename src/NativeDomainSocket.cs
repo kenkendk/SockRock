@@ -12,7 +12,7 @@ namespace SockRock
         /// <summary>
         /// The handle this socket is bound to
         /// </summary>
-        public readonly int Handle;
+        public int Handle { get; private set; }
 
         /// <summary>
         /// Flag indicating if the socket is disposed
@@ -22,12 +22,12 @@ namespace SockRock
         /// <summary>
         /// The path for the socket
         /// </summary>
-        public readonly string Path;
+        public string Path { get; private set; }
 
         /// <summary>
         /// A flag indicating if the path is hidden
         /// </summary>
-        public readonly bool Hidden;
+        public bool Hidden { get; private set; }
 
         /// <summary>
         /// Constructs a new domain socket

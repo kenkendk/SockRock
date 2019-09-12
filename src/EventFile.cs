@@ -13,7 +13,7 @@ namespace SockRock
         /// <summary>
         /// The eventfd handle
         /// </summary>
-        public readonly int Handle;
+        public int Handle { get; private set; }
 
         /// <summary>
         /// The read and write buffer

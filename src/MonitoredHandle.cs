@@ -36,7 +36,7 @@ namespace SockRock
         /// <summary>
         /// The handle we are monitoring
         /// </summary>
-        public readonly int Handle;
+        public int Handle { get; private set; }
 
         /// <summary>
         /// Constructs a new monitored handle

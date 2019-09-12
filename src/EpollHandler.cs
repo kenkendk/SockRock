@@ -36,12 +36,7 @@ namespace SockRock
         /// <summary>
         /// The maximum number of events returned from one call to epoll
         /// </summary>
-        public const int MAX_EVENTS = 100;
-
-        /// <summary>
-        /// The size of the read/write buffers
-        /// </summary>
-        private const int BUFFER_SIZE = 10 * 1024;
+        private const int MAX_EVENTS = 100;
 
         /// <summary>
         /// The epoll file descriptor
@@ -80,7 +75,7 @@ namespace SockRock
         {
             m_fd = Syscall.epoll_create(1);
             if (m_fd < 0)
-                throw new Exception($"Call to {nameof(Syscall.epoll_create)} failed with code: {Stdlib.GetLastError()}");
+                throw new IOException($"Call to {nameof(Syscall.epoll_create)} failed with code: {Stdlib.GetLastError()}");
             
             var ev = new EpollEvent()
             {
@@ -90,7 +85,7 @@ namespace SockRock
 
             var r = Syscall.epoll_ctl(m_fd, EpollOp.EPOLL_CTL_ADD, m_eventfile.Handle, ref ev);
             if (r != 0)
-                throw new Exception($"Call to {nameof(Syscall.epoll_ctl)} failed with code {r}: {Stdlib.GetLastError()}");
+                throw new IOException($"Call to {nameof(Syscall.epoll_ctl)} failed with code {r}: {Stdlib.GetLastError()}");
             
             m_runnerThread = new Thread(RunPoll);
             m_runnerThread.Start();
@@ -138,10 +133,8 @@ namespace SockRock
                 T res;
                 lock (m_lock)
                 {
-                    //if (m_handles.Count >= MAX_HANDLES)
-                        //return null;
                     if (m_handles.ContainsKey(handle))
-                        throw new Exception("Handle is already registered?");
+                        throw new InvalidOperationException("Handle is already registered?");
 
                     m_handles.Add(handle, res = creator(handle, m_bufferManager, () => this.DeregisterHandle(handle, closehandle)));
                 }
@@ -163,7 +156,7 @@ namespace SockRock
 
                 var r = Syscall.epoll_ctl(m_fd, EpollOp.EPOLL_CTL_ADD, handle, ref ev);
                 if (r != 0)
-                    throw new Exception($"Call to {nameof(Syscall.epoll_ctl)} failed with code {r}: {Stdlib.GetLastError()}");
+                    throw new IOException($"Call to {nameof(Syscall.epoll_ctl)} failed with code {r}: {Stdlib.GetLastError()}");
 
                 return res;
             }
@@ -196,7 +189,7 @@ namespace SockRock
             };
             var r = Syscall.epoll_ctl(m_fd, EpollOp.EPOLL_CTL_DEL, handle, ref ev);
             if (r != 0)
-                throw new Exception($"Call to {nameof(Syscall.epoll_ctl)} failed with code {r}: {Stdlib.GetLastError()}");
+                throw new IOException($"Call to {nameof(Syscall.epoll_ctl)} failed with code {r}: {Stdlib.GetLastError()}");
 
             if (close)
                 Syscall.close(handle);
@@ -253,8 +246,9 @@ namespace SockRock
             catch (Exception ex)
             {
                 m_runnerTask.TrySetException(ex);
-                Console.WriteLine("*** Epoll monitor crashed, no progress will be reported on monitored sockets ***");
-                Console.WriteLine(ex);
+                System.Diagnostics.Debug.WriteLine("*** Epoll monitor crashed, no progress will be reported on monitored sockets ***");
+                System.Diagnostics.Debug.WriteLine(ex);
+                System.Diagnostics.Debug.Flush();
             }
             finally
             {

@@ -21,7 +21,7 @@ namespace SockRock
         /// <summary>
         /// A monitor used to get async triggers from the monitor
         /// </summary>
-        private MonitoredHandle m_handle;
+        private readonly MonitoredHandle m_handle;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="T:SockRock.ListenSocket"/> class.
@@ -76,7 +76,7 @@ namespace SockRock
                 servaddr = new SockaddrUn(upe.Filename.Substring(isHidden ? 1 : 0), isHidden);
             }
             else
-                throw new Exception($"EndPoint not supported: {endpoint}");
+                throw new NotSupportedException($"EndPoint not supported: {endpoint}");
 
             // Bind so we are attached
             var ret = Syscall.bind(m_socket, servaddr);

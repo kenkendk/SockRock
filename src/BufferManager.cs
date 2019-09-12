@@ -17,7 +17,7 @@ namespace SockRock
         /// <summary>
         /// Flag indicating if this instance is disposed
         /// </summary>
-        private bool m_isDisposed = false;
+        private bool m_isDisposed;
 
         /// <summary>
         /// The allocated buffers
@@ -37,8 +37,16 @@ namespace SockRock
         /// <summary>
         /// Initializes a new instance of the <see cref="T:SockRock.BufferManager"/> class.
         /// </summary>
+        public BufferManager()
+            : this(10 * 1024)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="T:SockRock.BufferManager"/> class.
+        /// </summary>
         /// <param name="buffersize">The size of the buffers the instance manages.</param>
-        public BufferManager(int buffersize = 10 * 1024)
+        public BufferManager(int buffersize)
         {
             m_buffer_size = buffersize;
         }

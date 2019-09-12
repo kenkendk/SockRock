@@ -200,7 +200,7 @@ namespace SockRock
 
             using (var ptr_buffer = new GuardedHandle(buffer))
             {
-                var iovec = new Mono.Unix.Native.Iovec[] {
+                var iovec = new [] {
                     new Mono.Unix.Native.Iovec {
                         iov_base = ptr_buffer.Address,
                         iov_len = (ulong) buffer.Length,
@@ -240,7 +240,7 @@ namespace SockRock
 
                     // See how many bytes are of file descriptors we have
                     var recvDataOffset = Mono.Unix.Native.Syscall.CMSG_DATA(msghdr, offset);
-                    var userData = recvHdr.cmsg_len - (int)Mono.Unix.Native.Syscall.CMSG_LEN(0);
+                    //var userData = recvHdr.cmsg_len - (int)Mono.Unix.Native.Syscall.CMSG_LEN(0);
                     var bytes = recvHdr.cmsg_len - (recvDataOffset - offset);
                     var fdCount = bytes / sizeof(int);
                     var fds = new int[fdCount];
