@@ -12,10 +12,10 @@ PM> Install-Package SockRock
 
 SockRock is a wrapper library for using `epoll` and `kqueue` from C# without having a dependency on a native library.
 
-This is required to allow passing sockets handles between processes on Linux/BSD-based systems, as Mono and .NET Core does not support using a passed handle.
+This is required to allow passing socket-handles between processes on Linux/BSD-based systems, as Mono and .NET Core does not support using a passed native socket-handle.
 
-To support this, the library offers a simple interface to `ScmRights` for passing the file handle, a monitor process based on `epoll`/`kqueue` and a `SocketStream` class that implements `System.IO.Stream` but uses signals from the monitor process to avoid blocking the `async` methods.
+To support this, the library offers a simple interface to `ScmRights` for passing the socket-handle, a monitor process based on `epoll`/`kqueue` and a `SocketStream` class that implements `System.IO.Stream` but uses signals from the monitor process to avoid blocking the `async` methods.
 
-This allows a mostly drop-in replacement for `System.Net.NetworkStream` with handles passed from other processes.
+This allows a mostly drop-in replacement for `System.Net.NetworkStream` with a monitor-handle passed from another process.
 
-Since Mono accesses the handles in unexpected ways, it is not always possible to simply extract the handle and pass it. To remedy this, SockRock also contain a `ListenSocket` (and `AsyncListenSocket`) implementation that performs native `listen` and `bind` operations, giving direct access to the handles.
+Since Mono accesses the handles in unexpected ways, it is not always possible to simply extract the socket-handle and pass it. To remedy this, SockRock also contain a `ListenSocket` (and `AsyncListenSocket`) implementation that performs native `listen` and `bind` operations, giving direct access to the handles.
