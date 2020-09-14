@@ -56,6 +56,12 @@ namespace SockRock
                 var isHidden = upe.Filename[0] == 0;
                 servaddr = new SockaddrUn(upe.Filename.Substring(isHidden ? 1 : 0), isHidden);
             }
+            else if (endpoint is System.Net.Sockets.UnixDomainSocketEndPoint udse)
+            {
+                var name = udse.ToString();
+                var isHidden = name[0] == 0 || name[0] == '@';
+                servaddr = new SockaddrUn(name.Substring(isHidden ? 1 : 0), isHidden);
+            }
             else
                 throw new NotSupportedException($"EndPoint not supported: {endpoint}");
 
