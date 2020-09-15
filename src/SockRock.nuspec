@@ -2,7 +2,7 @@
 <package >
   <metadata>
     <id>SockRock</id>
-    <version>1.0.6</version>
+    <version>1.0.7</version>
     <title>SockRock</title>
     <authors>Kenneth Skovhede</authors>
     <owners>Kenneth Skovhede</owners>
@@ -11,7 +11,7 @@
     <projectUrl>https://github.com/kenkendk/sockrock</projectUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Native socket library in C#</description>
-    <releaseNotes>Update to .netstandard 2.1. Added support for built-in UnixEndpoint.</releaseNotes>
+    <releaseNotes>Update to .netstandard 2.1. Added support for built-in UnixEndpoint. Fixed issue with listening to Unix Domain Socket</releaseNotes>
     <copyright>Copyright 2020, Kenneth Skovhede</copyright>
     <tags>Socket ScmRights epoll kqueue async</tags>
     <dependencies>        
