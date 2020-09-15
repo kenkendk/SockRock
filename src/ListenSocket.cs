@@ -105,30 +105,12 @@ namespace SockRock
                     var err = Stdlib.GetLastError();
 
                     // Handle auto-delete of sockets
-                    if (autodeletedomainsocket && err == Errno.EADDRINUSE && !string.IsNullOrWhiteSpace(filepath) && File.Exists(filepath) && new FileInfo(filepath).Length == 0)
+                    if (autodeletedomainsocket && err == Errno.EADDRINUSE && TryDeleteDomainSocket(servaddr, filepath))
                     {
-                        // Ensure that no other process is using the socket
-                        var csock = Syscall.socket(UnixAddressFamily.AF_UNIX, UnixSocketType.SOCK_STREAM, 0);
-                        ret = Syscall.connect(csock, servaddr);
-                        Syscall.close(csock);
-
-                        // If we cannot connect, assume it is broken
-                        if (ret != 0)
-                        {
-                            // Try to remove the file
-                            var failed = false;
-                            try { File.Delete(filepath); }
-                            catch { failed = true; }
-
-                            // If the file is removed, try binding again
-                            if (!failed)
-                            {
-                                Syscall.close(m_socket);
-                                m_socket = -1;
-                                Bind(endpoint, backlog, false);
-                                return;
-                            }
-                        }
+                        Syscall.close(m_socket);
+                        m_socket = -1;
+                        Bind(endpoint, backlog, false);
+                        return;
                     }
 
                     throw new IOException($"Failed to bind to endpoint: {err}");
@@ -150,6 +132,32 @@ namespace SockRock
                 }
                 throw;
             }
+        }
+
+        public static bool TryDeleteDomainSocket(Sockaddr servaddr, string path)
+        {
+            // Make sure we only proceed with a potential domain socket entry
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path) && new FileInfo(path).Length == 0)
+            {
+                // Ensure that no other process is using the socket
+                var csock = Syscall.socket(UnixAddressFamily.AF_UNIX, UnixSocketType.SOCK_STREAM, 0);
+                var ret = Syscall.connect(csock, servaddr);
+                Syscall.close(csock);
+
+                // If we cannot connect, assume it is broken
+                if (ret != 0)
+                {
+                    // Try to remove the file
+                    var failed = false;
+                    try { File.Delete(path); }
+                    catch { failed = true; }
+
+                    // If the file is removed, try binding again
+                    return !failed;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
